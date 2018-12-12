@@ -51,7 +51,7 @@ public class TopNWordCount {
         if (params.has("in")) {
             filePath = params.get("in");
         } else {
-            filePath = "TopNWordCount/data-examples/war_and_peace.txt";
+            filePath = "TopNWordCount/data-examples/corrupt-zipf-gen.txt";
         }
 
         final int branchingFactor;
@@ -69,7 +69,8 @@ public class TopNWordCount {
             env.enableCheckpointing(5000)
                .setStateBackend((StateBackend) new FsStateBackend(checkpointsDir));
         } else {
-            text = env.readTextFile(filePath);
+            text = env.readTextFile(filePath)
+                      .setParallelism(1);
         }
 
         DataStream<Tuple2<String, Integer>> counts;
@@ -80,23 +81,23 @@ public class TopNWordCount {
               .name("Validator")
               .setParallelism(1);
 
-        DataStream<Tuple2<String, Integer>> topN = counts.flatMap(new LocalTopN(n));
-        int layerParallelism = env.getParallelism() / branchingFactor;
-        while (layerParallelism > 1) {
-            topN = topN.keyBy(0)
-                       .flatMap(new LocalTopN(n))
-                       .setParallelism(layerParallelism);
-            layerParallelism /= branchingFactor;
-        }
-
-        topN.addSink(new GlobalTopN(n))
-            .name("Top N")
-            .setParallelism(1);
+//        DataStream<Tuple2<String, Integer>> topN = counts.flatMap(new LocalTopN(n));
+//        int layerParallelism = env.getParallelism() / branchingFactor;
+//        while (layerParallelism > 1) {
+//            topN = topN.keyBy(0)
+//                       .flatMap(new LocalTopN(n))
+//                       .setParallelism(layerParallelism);
+//            layerParallelism /= branchingFactor;
+//        }
+//
+//        topN.addSink(new GlobalTopN(n))
+//            .name("Top N")
+//            .setParallelism(1);
 
         final JobExecutionResult result = env.execute("Top N Word Count");
         System.out.println("Job took " +
-                           result.getNetRuntime(TimeUnit.MILLISECONDS) +
-                           " milliseconds to finish.");
+                                   result.getNetRuntime(TimeUnit.MILLISECONDS) +
+                                   " milliseconds to finish.");
         //System.out.println(env.getExecutionPlan());
     }
 
