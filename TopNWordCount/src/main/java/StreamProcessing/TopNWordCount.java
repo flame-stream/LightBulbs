@@ -51,7 +51,7 @@ public class TopNWordCount {
         if (params.has("in")) {
             filePath = params.get("in");
         } else {
-            filePath = "TopNWordCount/data-examples/corrupt-zipf-gen.txt";
+            filePath = "TopNWordCount/data-examples/war_and_peace.txt";
         }
 
         final int branchingFactor;
@@ -95,9 +95,10 @@ public class TopNWordCount {
 //            .setParallelism(1);
 
         final JobExecutionResult result = env.execute("Top N Word Count");
-        System.out.println("Job took " +
-                                   result.getNetRuntime(TimeUnit.MILLISECONDS) +
-                                   " milliseconds to finish.");
+        System.out.println(
+                "Job took " +
+                result.getNetRuntime(TimeUnit.MILLISECONDS) +
+                " milliseconds to finish.");
         //System.out.println(env.getExecutionPlan());
     }
 

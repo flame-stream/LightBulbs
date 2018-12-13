@@ -1,92 +1,116 @@
 package StreamProcessing;
 
+import it.unimi.dsi.fastutil.ints.IntArrays;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-
 public class ZipfDistributionValidator implements SinkFunction<Tuple2<String, Integer>> {
 
-    private final HashMap<String, Integer> counts;
+    static private final double EPS = 1e-8;
     private long counter;
-    private double sumZipf = 0;
-    private int n = 0;
+    private double[] zipfCDF;
+    private int[] sortedCounts;
+    private final Object2IntOpenHashMap<String> counts;
 
     public ZipfDistributionValidator() {
         this.counter = 0L;
-        this.counts = new HashMap<>();
+        this.counts = new Object2IntOpenHashMap<>();
     }
 
-    private void verifyDistribution() {
+    private void verifyDistribution(boolean numUniqueWordsChanged) {
+        // If number of unique words has increased, allocate a new array
+        // of bigger capacity and recalculate Zipf CDF, else reuse the old array
+        if (numUniqueWordsChanged) {
+            sortedCounts = counts.values()
+                                 .toIntArray();
+            zipfCDF = new double[counts.size()];
+            zipfCDF[0] = 1.0;
+            for (int i = 1; i < zipfCDF.length; i++) {
+                zipfCDF[i] = zipfCDF[i - 1] + zipfCDF[i];
+            }
+            int last = zipfCDF.length - 1;
+            for (int i = 0; i < zipfCDF.length; i++) {
+                zipfCDF[i] /= zipfCDF[last];
+            }
+        } else {
+            counts.values()
+                  .toArray(sortedCounts);
+        }
+        IntArrays.quickSort(sortedCounts, (x, y) -> y - x);
 
-        int[] sortedCounts = counts.entrySet()
-                                   .stream()
-                                   .mapToInt((s) -> s.getValue())
-                                   .map(i -> -i)
-                                   .sorted()
-                                   .map(i -> -i)
-                                   .toArray();
+        long sumCounts = 0L;
+        for (int count : sortedCounts) {
+            sumCounts += count;
+        }
 
-        double d = 0;
-        double localSumCounts = 0;
-        double localSumZipf = 0;
-        double diff = 0;
-        int maxDiffStep = 0;
-
-        double[] zipfDistribFunc = new double[sortedCounts.length];
-        zipfDistribFunc[0] = 0;
-        zipfDistribFunc[zipfDistribFunc.length - 1] = 1;
-
-        for (int i = 1; i < sortedCounts.length; i++) {
-            localSumCounts += sortedCounts[i - 1];
-            localSumZipf += 1.0 / i;
-            zipfDistribFunc[i] = localSumZipf / sumZipf;
-
-            diff = Math.abs(localSumCounts / counter - localSumZipf / sumZipf);
+        // Calculate test statistics
+        double d = 0.0;
+        long cumSum = 0L;
+        for (int i = 0; i < sortedCounts.length; i++) {
+            cumSum += sortedCounts[i];
+            double ecdf = (double) cumSum / sumCounts;
+            double diff = Math.abs(zipfCDF[i] - ecdf);
             if (diff > d) {
                 d = diff;
-                maxDiffStep = i;
             }
         }
-        double[] cMinus = getProbabilitiesC(d, n, zipfDistribFunc, true, 0.001);
-        double[] cPlus = getProbabilitiesC(d, n, zipfDistribFunc, false, 0.001);
-        double criticalLevelMinus = getCriticalLevel(n, cMinus);
-        double criticalLevelPlus = getCriticalLevel(n, cPlus);
+
+        double[] cs = getProbabilitiesC(d);
+        double[] fs = getProbabilitiesF(d);
+        double criticalLevelMinus = getCriticalLevel(cs);
+        double criticalLevelPlus = getCriticalLevel(fs);
         double criticalLevel = criticalLevelMinus + criticalLevelPlus;
 
-        System.out.print("maxDiffStep : " + maxDiffStep + ", ");
-        System.out.print("criticalLevel : " + criticalLevel + ", ");
-        System.out.print("criticalLevelMinus : " + criticalLevelMinus + ", ");
-        System.out.print("criticalLevelPlus : " + criticalLevelPlus + ", ");
-        System.out.print("d : " + d + ", ");
-        System.out.print("counter : " + counter + ", ");
-        System.out.println("n : " + n + ", ");
-
+        if (counter % 100 == 0) {
+            System.out.println(
+                    counter + ". " +
+                    "d: " + d + ", " +
+                    "critical level: " + criticalLevel + ", " +
+                    "critical level+: " + criticalLevelMinus + ", " +
+                    "critical level-: " + criticalLevelPlus + ", " +
+                    "n: " + counts.size());
+        }
     }
 
-    private double[] getProbabilitiesC(double d, int n, double[] distribFunc, boolean typeMinus, double eps) {
-        double[] c = new double[Math.round((int) (n * (1 - d))) + 1];
-        double line = 0;
-        int i = 1;
+    private double[] getProbabilitiesC(double d) {
+        int n = counts.size();
+        double[] c = new double[(int) (n * (1 - d)) + 1];
         for (int j = 0; j < c.length; j++) {
-            line = d + j * 1.0 / n;
-            while (line > distribFunc[i] && i < distribFunc.length - 1) {
-                i++;
-            }
-
-            if ((typeMinus && Math.abs(line - distribFunc[i - 1]) > eps) || Math.abs(line - distribFunc[i]) < eps) {
-                c[j] = 1 - distribFunc[i];
+            double line = d + (double) j / n;
+            int i = 0;
+            while ((i < zipfCDF.length) && (zipfCDF[i] < line)) { i++; }
+            if ((i > 0) && (zipfCDF[i - 1] - line < EPS)) {
+                c[j] = 1 - line;
             } else {
-                c[j] = 1 - distribFunc[i - 1];
-
+                c[j] = 1 - zipfCDF[i];
             }
         }
         return c;
     }
 
-    private double getCriticalLevel(int n, double[] c) {
+    private double[] getProbabilitiesF(double d) {
+        int n = counts.size();
+        double[] f = new double[(int) (n * (1 - d)) + 1];
+        for (int j = 0; j < f.length; j++) {
+            double line = 1 - d - (double) j / n;
+            int i = 0;
+            while ((i < zipfCDF.length) && (zipfCDF[i] < line)) { i++; }
+            if (zipfCDF[i] - line < EPS) {
+                f[j] = line;
+            } else {
+                if (i == 0) {
+                    f[j] = 0.0;
+                } else {
+                    f[j] = zipfCDF[i - 1];
+                }
+            }
+        }
+        return f;
+    }
 
+    private double getCriticalLevel(double[] c) {
+        int n = counts.size();
         double[] b = new double[c.length];
         b[0] = 1;
 
@@ -124,14 +148,14 @@ public class ZipfDistributionValidator implements SinkFunction<Tuple2<String, In
 
     @Override
     public void invoke(Tuple2<String, Integer> entry, Context context) {
-        counts.put(entry.f0, entry.f1);
         counter++;
-        for (int i = n + 1; i <= counts.size(); i++) {
-            sumZipf += 1.0 / i;
+        int oldCount = counts.put(entry.f0, entry.f1.intValue());
+
+        if (counts.size() < 2) {
+            System.out.println("We are good anyway.");
         }
-        n = counts.size();
-        if (counter % 100 == 0 && counter < 30001) {
-            verifyDistribution();
-        }
+
+        // If we got default value of 0, then it's a new word
+        verifyDistribution(oldCount == 0);
     }
 }
