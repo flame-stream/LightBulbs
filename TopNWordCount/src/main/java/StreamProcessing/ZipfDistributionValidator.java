@@ -27,7 +27,7 @@ public class ZipfDistributionValidator implements SinkFunction<Tuple2<String, In
             zipfCDF = new double[counts.size()];
             zipfCDF[0] = 1.0;
             for (int i = 1; i < zipfCDF.length; i++) {
-                zipfCDF[i] = zipfCDF[i - 1] + zipfCDF[i];
+                zipfCDF[i] = zipfCDF[i - 1] + 1.0 / (i + 1);
             }
             int last = zipfCDF.length - 1;
             for (int i = 0; i < zipfCDF.length; i++) {
@@ -50,10 +50,7 @@ public class ZipfDistributionValidator implements SinkFunction<Tuple2<String, In
         for (int i = 0; i < sortedCounts.length; i++) {
             cumSum += sortedCounts[i];
             double ecdf = (double) cumSum / sumCounts;
-            double diff = Math.abs(zipfCDF[i] - ecdf);
-            if (diff > d) {
-                d = diff;
-            }
+            d = Math.max(d, Math.abs(zipfCDF[i] - ecdf));
         }
 
         double[] cs = getProbabilitiesC(d);
@@ -80,7 +77,7 @@ public class ZipfDistributionValidator implements SinkFunction<Tuple2<String, In
             double line = d + (double) j / n;
             int i = 0;
             while ((i < zipfCDF.length) && (zipfCDF[i] < line)) { i++; }
-            if ((i > 0) && (zipfCDF[i - 1] - line < EPS)) {
+            if ((i > 0) && (line - zipfCDF[i - 1] < EPS)) {
                 c[j] = 1 - line;
             } else {
                 c[j] = 1 - zipfCDF[i];
