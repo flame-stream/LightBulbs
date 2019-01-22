@@ -51,7 +51,7 @@ public class TopNWordCount {
         if (params.has("in")) {
             filePath = params.get("in");
         } else {
-            filePath = "TopNWordCount/data-examples/war_and_peace.txt";
+            filePath = "test-data/war_and_peace.txt";
         }
 
         final int branchingFactor;
@@ -77,7 +77,7 @@ public class TopNWordCount {
         counts = text.flatMap(new Splitter())
                      .keyBy(0)
                      .sum(1);
-        counts.addSink(new ZipfDistributionValidator())
+        counts.addSink(new ZipfDistributionValidator(1000, 0.05, 1.16, 3, 100))
               .name("Validator")
               .setParallelism(1);
 
@@ -105,8 +105,7 @@ public class TopNWordCount {
     public static class Splitter implements FlatMapFunction<String, Tuple2<String, Integer>> {
         @Override
         public void flatMap(String sentence, Collector<Tuple2<String, Integer>> out) {
-            for (String word : sentence.toLowerCase()
-                                       .split("[^а-яa-z0-9]+")) {
+            for (String word : sentence.toLowerCase().split("[^а-яa-z0-9]+")) {
                 if (!word.isEmpty()) {
                     out.collect(Tuple2.of(word, 1));
                 }
