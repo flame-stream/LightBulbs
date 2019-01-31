@@ -77,9 +77,6 @@ public class TopNWordCount {
         counts = text.flatMap(new Splitter())
                      .keyBy(0)
                      .sum(1);
-        counts.addSink(new ZipfDistributionValidator(1000, 0.05, 1.16, 3, 100))
-              .name("Validator")
-              .setParallelism(1);
 
 //        DataStream<Tuple2<String, Integer>> topN = counts.flatMap(new LocalTopN(n));
 //        int layerParallelism = env.getParallelism() / branchingFactor;
