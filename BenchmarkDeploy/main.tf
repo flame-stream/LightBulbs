@@ -8,7 +8,7 @@ variable "cluster_size" {
 variable "key_pair" {}
 
 variable "region" {
-  default = "eu-west-3"
+  default = "eu-west-2"
 }
 
 provider "aws" {
@@ -24,7 +24,7 @@ module "networking" {
 
 resource "aws_instance" "worker" {
   count         = "${var.cluster_size}"
-  ami           = "ami-08182c55a1c188dee"
+  ami           = "ami-08b10fdfc9316492e"
   instance_type = "t2.micro"
   key_name      = "${var.key_pair}"
   subnet_id     = "${module.networking.subnet_id}"

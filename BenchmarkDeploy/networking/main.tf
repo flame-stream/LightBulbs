@@ -32,7 +32,7 @@ resource "aws_security_group" "allow-ssh-flink-egress" {
     ]
   }
 
-  # Allow everyone to view FLink dashboard
+  # Allow everyone to view Flink dashboard
   ingress {
     from_port = 8081
     to_port   = 8081
