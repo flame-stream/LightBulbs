@@ -67,35 +67,35 @@ public class TopNWordCount {
         if (params.has("chk")) {
             text = readAndMonitorTextFile(filePath, env);
             env.enableCheckpointing(5000)
-               .setStateBackend((StateBackend) new FsStateBackend(checkpointsDir));
+                    .setStateBackend((StateBackend) new FsStateBackend(checkpointsDir));
         } else {
             text = env.readTextFile(filePath)
-                      .setParallelism(1);
+                    .setParallelism(1);
         }
 
         DataStream<Tuple2<String, Integer>> counts;
         counts = text.flatMap(new Splitter())
-                     .keyBy(0)
-                     .sum(1);
+                .keyBy(0)
+                .sum(1);
 
-//        DataStream<Tuple2<String, Integer>> topN = counts.flatMap(new LocalTopN(n));
-//        int layerParallelism = env.getParallelism() / branchingFactor;
-//        while (layerParallelism > 1) {
-//            topN = topN.keyBy(0)
-//                       .flatMap(new LocalTopN(n))
-//                       .setParallelism(layerParallelism);
-//            layerParallelism /= branchingFactor;
-//        }
-//
-//        topN.addSink(new GlobalTopN(n))
-//            .name("Top N")
-//            .setParallelism(1);
+        DataStream<Tuple2<String, Integer>> topN = counts.flatMap(new LocalTopN(n));
+        int layerParallelism = env.getParallelism() / branchingFactor;
+        while (layerParallelism > 1) {
+            topN = topN.keyBy(0)
+                       .flatMap(new LocalTopN(n))
+                       .setParallelism(layerParallelism);
+            layerParallelism /= branchingFactor;
+        }
+
+        topN.addSink(new GlobalTopN(n))
+            .name("Top N")
+            .setParallelism(1);
 
         final JobExecutionResult result = env.execute("Top N Word Count");
         System.out.println(
                 "Job took " +
-                result.getNetRuntime(TimeUnit.MILLISECONDS) +
-                " milliseconds to finish.");
+                        result.getNetRuntime(TimeUnit.MILLISECONDS) +
+                        " milliseconds to finish.");
         //System.out.println(env.getExecutionPlan());
     }
 
