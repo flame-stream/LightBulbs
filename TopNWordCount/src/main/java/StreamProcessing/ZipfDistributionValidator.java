@@ -15,12 +15,9 @@ import java.util.Arrays;
 
 public class ZipfDistributionValidator implements FlatMapFunction<Tuple2<String, Integer>, Boolean> {
     private long counter;
-
-
     private final int each;
     private final double alpha;
     private final int boundary;
-
     private final Object2IntOpenHashMap<String> counts;
 
     public ZipfDistributionValidator(int each, double alpha, int boundary) {
@@ -32,7 +29,7 @@ public class ZipfDistributionValidator implements FlatMapFunction<Tuple2<String,
         counts = new Object2IntOpenHashMap<>();
     }
 
-    private double[] ParameterEstimation(int[] sorted_counts, int start, int minValue) {
+    private double[] parameterEstimation(int[] sorted_counts, int start, int minValue) {
         double[] parameters = new double[2];
         int bound = sorted_counts.length;
         for (int i = sorted_counts.length - 1; i >= 0; i--) {
@@ -71,7 +68,7 @@ public class ZipfDistributionValidator implements FlatMapFunction<Tuple2<String,
         int[] observed = counts.values().toIntArray();
         IntArrays.quickSort(observed, (a, b) -> b - a);
 
-        double[] parameters = ParameterEstimation(observed, 10, 5);
+        double[] parameters = parameterEstimation(observed, 10, 5);
         double s = parameters[0];
         double multiplier = parameters[1];
 

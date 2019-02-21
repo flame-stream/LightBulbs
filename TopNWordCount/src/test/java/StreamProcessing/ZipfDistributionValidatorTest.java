@@ -107,16 +107,18 @@ public class ZipfDistributionValidatorTest {
                                  final int parallelism, int boundary) throws Exception {
 
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        final DataStream<String> text = env.readTextFile(filePath);
+        final DataStream<String> text = env.readTextFile(filePath).name("ReadTextFile");
 
         DataStream<Tuple2<String, Integer>> counts = text.flatMap(new TopNWordCount.Splitter())
+                .name("Splitter")
                 .keyBy(0)
-                .sum(1);
+                .sum(1)
+                .name("Sum");
 
         counts.flatMap(new ZipfDistributionValidator(each, alpha, boundary))
+                .name("ZipfDistributionValidator")
                 .setParallelism(parallelism)
-                .addSink(new CollectSink())
-                .name("Validator");
+                .addSink(new CollectSink());
         //System.out.println(env.getExecutionPlan());
         env.execute();
         return CollectSink.valid;
