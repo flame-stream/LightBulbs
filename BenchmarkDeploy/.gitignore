@@ -2,3 +2,5 @@
 terraform.tfvars
 *.tfstate
 *.tfstate.backup
+*.retry
+resources/inventory.yml
