@@ -8,10 +8,10 @@ import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class KryoSocketSink extends RichSinkFunction<WordCountWithID> {
+public class KryoSocketSink extends RichSinkFunction<WordWithID> {
     private static final long serialVersionUID = 1L;
     private static final Logger LOG = LoggerFactory.getLogger(KryoSocketSink.class);
-    private static final int OUTPUT_BUFFER_SIZE = 1000;
+    private static final int OUTPUT_BUFFER_SIZE = 1000000;
     private static final int CONNECTION_AWAIT_TIMEOUT = 5000;
 
     private final String hostname;
@@ -26,7 +26,6 @@ public class KryoSocketSink extends RichSinkFunction<WordCountWithID> {
     @Override
     public void open(Configuration parameters) throws Exception {
         client = new Client(OUTPUT_BUFFER_SIZE, 1000);
-
         client.addListener(new Listener() {
             @Override
             public void disconnected(Connection connection) {
@@ -41,7 +40,7 @@ public class KryoSocketSink extends RichSinkFunction<WordCountWithID> {
     }
 
     @Override
-    public void invoke(WordCountWithID value, Context context) {
+    public void invoke(WordWithID value, Context context) {
         if (client != null && client.isConnected()) { // TODO: How client can be null?
             client.sendTCP(value.id);
         } else {

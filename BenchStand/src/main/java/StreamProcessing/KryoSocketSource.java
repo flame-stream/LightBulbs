@@ -8,10 +8,12 @@ import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunctio
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class KryoSocketSource extends RichParallelSourceFunction<WordCountWithID> {
+import java.io.IOException;
+
+public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
     private static final long serialVersionUID = 1L;
     private static final Logger LOG = LoggerFactory.getLogger(KryoSocketSource.class);
-    private static final int INPUT_BUFFER_SIZE = 1000; // bytes
+    private static final int INPUT_BUFFER_SIZE = 1000000; // bytes
     private static final int CONNECTION_AWAIT_TIMEOUT = 5000; // milliseconds
 
     private final String hostname;
@@ -27,16 +29,16 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordCountWithID
     public void open(Configuration parameters) {
         client = new Client(1000, INPUT_BUFFER_SIZE);
         client.getKryo()
-              .register(WordCountWithID.class);
+              .register(WordWithID.class);
     }
 
     @Override
-    public void run(SourceContext<WordCountWithID> ctx) throws Exception {
+    public void run(SourceContext<WordWithID> ctx) throws Exception {
         client.addListener(new Listener() {
             @Override
             public void received(Connection connection, Object object) {
-                if (object instanceof WordCountWithID) {
-                    ctx.collect((WordCountWithID) object);
+                if (object instanceof WordWithID) {
+                    ctx.collect((WordWithID) object);
                 } else {
                     LOG.warn("Unknown object type {}", object);
                 }

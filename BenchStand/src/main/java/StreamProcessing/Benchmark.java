@@ -1,25 +1,43 @@
 package StreamProcessing;
 
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
+import java.io.File;
+
 public class Benchmark {
-    private static String FILE = "TopNWordCount/test-data/war_and_peace.txt";
-    private static int NUM_WORDS = 586222;
-    private static final String hostname = "127.0.0.1";
-    private static final int frontPort = 9998;
-    private static final int rearPort = 9999;
 
     public static void main(String[] args) throws InterruptedException {
+        final Config benchConfig;
+        if (args.length > 0) {
+            benchConfig = ConfigFactory.parseFile(new File(args[0]));
+        } else {
+            benchConfig = ConfigFactory.load("bench.conf");
+        }
+
         final GraphDeployer deployer = new GraphDeployer() {
             @Override
             public void deploy() {
-                final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-                env.setParallelism(1);
+                final int parallelism = benchConfig.getInt("job.parallelism");
+                final StreamExecutionEnvironment env;
+                if (benchConfig.hasPath("remote")) {
+                    env = StreamExecutionEnvironment.createRemoteEnvironment(
+                            benchConfig.getString("remote.manager_hostname"),
+                            benchConfig.getInt("remote.manager_port"),
+                            parallelism,
+                            "BenchStand.jar");
+                } else {
+                    env = StreamExecutionEnvironment.createLocalEnvironment(parallelism);
+                }
+
+                final String hostname = benchConfig.getString("job.bench_host");
+                final int frontPort = benchConfig.getInt("job.source_port");
+                final int rearPort = benchConfig.getInt("job.sink_port");
 
                 env.addSource(new KryoSocketSource(hostname, frontPort))
                    .setParallelism(1)
                    .keyBy("word")
-                   .sum("count")
                    .map(new ZipfDistributionValidator(1000, 0.05, 1.16, 3, 100))
                    .addSink(new KryoSocketSink(hostname, rearPort));
 
@@ -36,7 +54,7 @@ public class Benchmark {
             public void close() {}
         };
 
-        try (BenchStand benchStand = new BenchStand(FILE, NUM_WORDS, frontPort, rearPort, deployer)) {
+        try (BenchStand benchStand = new BenchStand(benchConfig, deployer)) {
             benchStand.run();
         }
         System.exit(0);

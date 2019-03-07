@@ -3,6 +3,7 @@ package StreamProcessing;
 import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
 import com.esotericsoftware.kryonet.Server;
+import com.typesafe.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,11 +27,11 @@ public class BenchStand implements AutoCloseable {
     // TODO: Needs synchronized access?
     private final long[] latencies;
 
-    public BenchStand(String file, int expectedSize, int frontPort, int rearPort, GraphDeployer deployer) {
-        this.file = file;
-        this.expectedSize = expectedSize;
-        this.frontPort = frontPort;
-        this.rearPort = rearPort;
+    public BenchStand(Config benchConfig, GraphDeployer deployer) {
+        this.file = benchConfig.getString("benchstand.file_path");
+        this.expectedSize = benchConfig.getInt("benchstand.word_count");
+        this.frontPort = benchConfig.getInt("job.source_port");
+        this.rearPort = benchConfig.getInt("job.sink_port");
         this.deployer = deployer;
         this.awaitConsumer = new AwaitCountConsumer(expectedSize);
         this.latencies = new long[expectedSize];
@@ -51,9 +52,9 @@ public class BenchStand implements AutoCloseable {
     }
 
     private Server producer() throws IOException {
-        final Server producer = new Server(1000, 10000);
+        final Server producer = new Server(100000, 1000000);
         producer.getKryo()
-                .register(WordCountWithID.class);
+                .register(WordWithID.class);
 
         final Connection[] connection = new Connection[1];
         new Thread(() -> {
@@ -71,9 +72,10 @@ public class BenchStand implements AutoCloseable {
                     for (String word : line.toLowerCase()
                                            .split("[^а-яa-z0-9]+")) {
                         synchronized (connection) {
-                            connection[0].sendTCP(new WordCountWithID(i, word, 1));
-                            latencies[i++] = System.nanoTime();
+                            connection[0].sendTCP(new WordWithID(i, word));
+                            latencies[i] = System.nanoTime();
                             LockSupport.parkNanos(5000);
+                            i++;
                         }
                     }
                 }
@@ -86,11 +88,8 @@ public class BenchStand implements AutoCloseable {
             @Override
             public void connected(Connection newConnection) {
                 synchronized (connection) {
-                    LOG.info("There is new connection: {}", newConnection.getRemoteAddressTCP());
-                    if (connection[0] == null && newConnection.getRemoteAddressTCP()
-                                                              .getAddress()
-                                                              .getHostName()
-                                                              .equals("localhost")) {
+                    LOG.info("There is a new connection: {}", newConnection.getRemoteAddressTCP());
+                    if (connection[0] == null) {
                         LOG.info("Accepting connection: {}", newConnection.getRemoteAddressTCP());
                         connection[0] = newConnection;
                         connection.notify();
@@ -108,7 +107,7 @@ public class BenchStand implements AutoCloseable {
     }
 
     private Server consumer() throws IOException {
-        final Server consumer = new Server(1000, 1000);
+        final Server consumer = new Server(100000, 1000000);
 
         consumer.addListener(new Listener() {
             @Override
@@ -126,7 +125,6 @@ public class BenchStand implements AutoCloseable {
                 final int wordId;
                 if (object instanceof Integer) {
                     wordId = (int) object;
-                    System.out.println(wordId);
                 } else {
                     LOG.warn("Unknown object type", object);
                     return;
@@ -134,7 +132,7 @@ public class BenchStand implements AutoCloseable {
 
                 latencies[wordId] = System.nanoTime() - latencies[wordId];
                 awaitConsumer.accept(wordId);
-                if (awaitConsumer.got() % 10000 == 0) {
+                if (awaitConsumer.got() % 100000 == 0) {
                     LOG.info("Progress: {}/{}", awaitConsumer.got(), expectedSize);
                 }
             }

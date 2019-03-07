@@ -9,7 +9,7 @@ import org.apache.flink.api.common.functions.MapFunction;
 
 import java.util.Arrays;
 
-public class ZipfDistributionValidator implements MapFunction<WordCountWithID, WordCountWithID> {
+public class ZipfDistributionValidator implements MapFunction<WordWithID, WordWithID> {
     private long counter;
     private double harmonicNum;
 
@@ -64,13 +64,12 @@ public class ZipfDistributionValidator implements MapFunction<WordCountWithID, W
     }
 
     @Override
-    public WordCountWithID map(WordCountWithID entry) {
+    public WordWithID map(WordWithID entry) {
         counter++;
-        int oldCount = counts.put(entry.word, entry.count);
+        int oldCount = counts.addTo(entry.word, 1);
 
         // If we got default value of 0, then it's a new word
         verifyDistribution(oldCount == 0);
-
         return entry;
     }
 }
