@@ -1,0 +1,6 @@
+/**/.terraform/
+*.retry
+*.tfstate
+*.tfstate.backup
+ansible/resources/inventory.yml
+terraform/terraform.tfvars

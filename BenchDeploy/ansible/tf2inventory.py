@@ -7,24 +7,24 @@ def group(nodes):
     return {'hosts': hosts}
 
 
-with open('terraform.tfstate') as f:
+with open('../terraform/terraform.tfstate') as f:
     data = json.load(f)['modules'][0]['outputs']
 
 public_ips = data['public_ips']['value'].split(', ')
 private_ips = data['private_ips']['value'].split(', ')
 
-assert len(public_ips) >= 2
-assert len(private_ips) >= 2
+assert len(public_ips) >= 3
+assert len(private_ips) >= 3
 
-manager, *workers = zip(private_ips, public_ips)
+manager, bench, *workers = zip(private_ips, public_ips)
 result = {'all': {
     'children': {
+        'bench': group([bench]),
         'manager': group([manager]),
         'workers': group(workers)
     },
     'vars': {
         'ansible_user': 'ubuntu',
-        'ansible_become': True,
         'ansible_ssh_private_key_file': 'resources/admin-paris.pem',
         'ansible_python_interpreter': '/usr/bin/python3'
     }

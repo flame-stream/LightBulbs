@@ -2,25 +2,31 @@ version: "3"
 services:
   jobmanager:
     image: flink:alpine
-    expose:
-      - "6123"
     ports:
       - "8081:8081"
     command: jobmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - FLINK_JM_HEAP=256m
+      - FLINK_JM_HEAP=512m
 
   taskmanager:
     image: flink:alpine
-    expose:
-      - "6121"
-      - "6122"
+    ports:
+      - "9998:9998"
+      - "9999:9999"
     depends_on:
       - jobmanager
     command: taskmanager
-    links:
-      - "jobmanager:jobmanager"
+    deploy:
+      replicas: {{ num_taskmanagers }}
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - FLINK_TM_HEAP=256m
+      - FLINK_TM_HEAP=512m
+
+# DO NOT REMOVE
+# https://github.com/moby/moby/issues/27399#issuecomment-256928125
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: "192.168.1.0/24"

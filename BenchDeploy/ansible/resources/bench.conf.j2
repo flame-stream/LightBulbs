@@ -1,0 +1,16 @@
+{
+    "benchstand": {
+        "file_path": "war_and_peace.txt",
+        "word_count": 586222
+    },
+    "remote": {
+        "manager_hostname": "{{ groups['manager'][0] }}",
+        "manager_port": 8081
+    },
+    "job": {
+        "parallelism": "{{ groups['workers'] | length }}",
+        "bench_host": "{{ groups['bench'][0] }}",
+        "source_port": 9998,
+        "sink_port": 9999
+    }
+}

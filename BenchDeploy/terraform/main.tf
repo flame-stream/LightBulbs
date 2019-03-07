@@ -1,9 +1,6 @@
 variable "access_key" {}
 variable "secret_key" {}
-
-variable "cluster_size" {
-  default = 3
-}
+variable "cluster_size" {}
 
 provider "aws" {
   access_key = "${var.access_key}"
@@ -16,7 +13,7 @@ module "networking" {
   cidr   = "10.0.0.0/24"
 }
 
-resource "aws_instance" "worker" {
+resource "aws_instance" "node" {
   count         = "${var.cluster_size}"
   ami           = "ami-08182c55a1c188dee"
   instance_type = "t2.micro"
