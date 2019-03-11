@@ -8,7 +8,7 @@ import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class KryoSocketSink extends RichSinkFunction<WordWithID> {
+public class KryoSocketSink extends RichSinkFunction<Integer> {
     private static final long serialVersionUID = 1L;
     private static final Logger LOG = LoggerFactory.getLogger(KryoSocketSink.class);
     private static final int OUTPUT_BUFFER_SIZE = 1000000;
@@ -40,9 +40,9 @@ public class KryoSocketSink extends RichSinkFunction<WordWithID> {
     }
 
     @Override
-    public void invoke(WordWithID value, Context context) {
+    public void invoke(Integer value, Context context) {
         if (client != null && client.isConnected()) { // TODO: How client can be null?
-            client.sendTCP(value.id);
+            client.sendTCP(value);
         } else {
             throw new RuntimeException("Writing to the closed log");
         }

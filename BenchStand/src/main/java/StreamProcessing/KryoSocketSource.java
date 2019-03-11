@@ -36,6 +36,10 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
     public void run(SourceContext<WordWithID> ctx) throws Exception {
         client.addListener(new Listener() {
             @Override
+            public void connected(Connection connection) {
+                connection.setName("Client Source");
+            }
+            @Override
             public void received(Connection connection, Object object) {
                 if (object instanceof WordWithID) {
                     ctx.collect((WordWithID) object);
@@ -46,8 +50,12 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
 
             @Override
             public void disconnected(Connection connection) {
-                client.stop();
                 LOG.info("DISCONNECTED");
+                try {
+                    client.connect(CONNECTION_AWAIT_TIMEOUT, hostname, port);
+                } catch (IOException e) {
+                    LOG.error("Error {}", e);
+                }
             }
         });
 
