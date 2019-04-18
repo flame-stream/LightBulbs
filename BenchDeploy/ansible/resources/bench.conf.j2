@@ -2,14 +2,14 @@
     "benchstand": {
         "file_path": "war_and_peace.txt",
         "word_count": 586222,
-        "sleep_for": 10000,
+        "sleep_for": 5000,
     },
     "remote": {
         "manager_hostname": "{{ groups['manager'][0] }}",
         "manager_port": 8081
     },
     "job": {
-        "check_each": 1,
+        "check_each": 100,
         "log_each": 100000,
         "parallelism": "{{ groups['workers'] | length }}",
         "bench_host": "{{ groups['bench'][0] }}",

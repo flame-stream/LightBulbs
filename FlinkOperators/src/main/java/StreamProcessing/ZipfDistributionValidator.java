@@ -3,30 +3,25 @@ package StreamProcessing;
 import it.unimi.dsi.fastutil.ints.IntArrays;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 
+import org.apache.flink.api.common.functions.MapFunction;
+
 import org.apache.commons.math3.stat.inference.ChiSquareTest;
 import org.apache.commons.math3.util.FastMath;
-
-import org.apache.flink.api.common.functions.MapFunction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 
 public class ZipfDistributionValidator implements MapFunction<WordWithID, Integer> {
-    private static final Logger LOG = LoggerFactory.getLogger(ZipfDistributionValidator.class);
     private long counter;
     private final int each;
     private final double alpha;
     private final int boundary;
-    private final int logEach;
     private final Object2IntOpenHashMap<String> counts;
 
-    public ZipfDistributionValidator(int each, double alpha, int boundary, int logEach) {
+    public ZipfDistributionValidator(int each, double alpha, int boundary) {
         counter = 0L;
         this.each = each;
         this.alpha = alpha;
         this.boundary = boundary;
-        this.logEach = logEach;
 
         counts = new Object2IntOpenHashMap<>();
     }
@@ -63,7 +58,8 @@ public class ZipfDistributionValidator implements MapFunction<WordWithID, Intege
             parameters[0] = 1;
         }
         parameters[1] = FastMath.exp((parameters[0] * dotLognLogn + dotLogfLogn) / sumLogn);
-
+        System.out.println(parameters[0]);
+        System.out.println(parameters[1]);
         return parameters;
     }
 
@@ -84,10 +80,11 @@ public class ZipfDistributionValidator implements MapFunction<WordWithID, Intege
         int skip = (int) (expected.length * 0.005);
 
         ChiSquareTest test = new ChiSquareTest();
-        return !test.chiSquareTest(Arrays.copyOfRange(expected, skip, expected.length), Arrays.copyOfRange(
-                Arrays.stream(observed)
-                      .asLongStream()
-                      .toArray(), skip, observed.length), alpha);
+        return !test.chiSquareTest(Arrays.copyOfRange(expected, skip, expected.length),
+                                   Arrays.copyOfRange(Arrays.stream(observed)
+                                                            .asLongStream()
+                                                            .toArray(), skip, observed.length),
+                                   alpha);
     }
 
     @Override
@@ -96,10 +93,7 @@ public class ZipfDistributionValidator implements MapFunction<WordWithID, Intege
         counts.addTo(entry.word, 1);
 
         if (counter > boundary && counter % each == 0) {
-            boolean status = verifyDistribution();
-            if (counter % logEach == 0) {
-                LOG.info("Zipf distribution status: {}", status);
-            }
+            verifyDistribution();
         }
 
         return entry.id;

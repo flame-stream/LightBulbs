@@ -4,6 +4,7 @@ import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
 import com.esotericsoftware.kryonet.Server;
 import com.typesafe.config.Config;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,16 +15,18 @@ import java.util.concurrent.locks.LockSupport;
 
 public class BenchStand implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(BenchStand.class);
+    private static final int PRODUCER_BUFFER_SIZE = 4_194_304; // bytes
+    private static final int CONSUMER_BUFFER_SIZE = 2_097_152; // bytes
 
+    private final String file;
+    private final int numWords;
     private final int frontPort;
     private final int rearPort;
-    private final String file;
-    private final int expectedSize;
     private final int logEach;
     private final int sleepFor;
     private final int parallelism;
 
-    private final GraphDeployer deployer;
+    private final Runnable deployer;
     private final AwaitCountConsumer awaitConsumer;
     private final Server producer;
     private final Server consumer;
@@ -31,40 +34,58 @@ public class BenchStand implements AutoCloseable {
     // TODO: Needs synchronized access?
     private final long[] latencies;
 
-    public BenchStand(Config benchConfig, GraphDeployer deployer) {
+    public BenchStand(Config benchConfig, Runnable deployer) throws IOException {
         this.file = benchConfig.getString("benchstand.file_path");
-        this.expectedSize = benchConfig.getInt("benchstand.word_count");
+        this.numWords = benchConfig.getInt("benchstand.word_count");
         this.frontPort = benchConfig.getInt("job.source_port");
         this.rearPort = benchConfig.getInt("job.sink_port");
         this.logEach = benchConfig.getInt("job.log_each");
         this.sleepFor = benchConfig.getInt("benchstand.sleep_for");
         this.parallelism = benchConfig.getInt("job.parallelism");
         this.deployer = deployer;
-        this.awaitConsumer = new AwaitCountConsumer(expectedSize);
-        this.latencies = new long[expectedSize];
-
-        try {
-            this.producer = producer();
-            this.consumer = consumer();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        this.awaitConsumer = new AwaitCountConsumer(numWords);
+        this.latencies = new long[numWords];
+        this.producer = producer();
+        this.consumer = consumer();
     }
 
     public void run() throws InterruptedException {
-        deployer.deploy();
+        deployer.run();
         awaitConsumer.await(10, TimeUnit.MINUTES);
-        producer.close(); // TODO: Why not stop?
+        producer.close();
         consumer.close();
     }
 
     private Server producer() throws IOException {
-        final Server producer = new Server(100000, 1000);
+        final Server producer = new Server(PRODUCER_BUFFER_SIZE, 1_048_576);
+        final Connection[] connections = new Connection[parallelism];
+
         producer.getKryo()
                 .register(WordWithID.class);
+        producer.addListener(new Listener() {
+            private int numConnected = 0;
 
-        final Connection[] connections = new Connection[parallelism];
-        new Thread(() -> {
+            @Override
+            public void connected(Connection connection) {
+                connection.setName("Bench to source");
+                synchronized (connections) {
+                    if (numConnected < parallelism) {
+                        LOG.info("Source connected: ({}), {}", connection,
+                                 connection.getRemoteAddressTCP());
+                        connections[numConnected] = connection;
+                        numConnected++;
+                        if (numConnected == parallelism) {
+                            connections.notify();
+                        }
+                    } else {
+                        LOG.info("Closing connection {}", connection);
+                        connection.close();
+                    }
+                }
+            }
+        });
+
+        Thread sender = new Thread(() -> {
             synchronized (connections) {
                 try {
                     connections.wait();
@@ -79,68 +100,39 @@ public class BenchStand implements AutoCloseable {
                     for (String word : line.toLowerCase()
                                            .split("[^а-яa-z0-9]+")) {
                         synchronized (connections) {
-                            // DO NOT CHANGE THE ORDER. WRITING TO latencies SHOULD COME FIRST IN THE BLOCK
+                            // DO NOT CHANGE THE LINE ORDER.
+                            // WRITING TO latencies SHOULD COME FIRST IN THE BLOCK
                             latencies[i] = System.nanoTime();
                             connections[i % parallelism].sendTCP(new WordWithID(i, word));
-                            LockSupport.parkNanos(sleepFor);
                             i++;
+                            LockSupport.parkNanos(sleepFor);
                         }
                     }
                 }
-                LOG.info("Done sending words");
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        }).start();
-
-        producer.addListener(new Listener() {
-            private int numConnected = 0;
-
-            @Override
-            public void connected(Connection connection) {
-                connection.setName("Server Source " + numConnected);
-                synchronized (connections) {
-                    LOG.info("Accepting connection: ({}), {}", connection, connection.getRemoteAddressTCP());
-                    connections[numConnected] = connection;
-                    numConnected++;
-
-                    if (numConnected == parallelism) {
-                        connections.notify();
-                    }
-                }
-            }
-
-            @Override
-            public void received(Connection connection, Object o) {
-                LOG.info("My debug {}, {}", connection, o);
-            }
-
-            @Override
-            public void disconnected(Connection connection) {
-                LOG.info("Server closed connection {}", connection);
-            }
         });
 
-        producer.start();
-        producer.bind(frontPort);
+        try {
+            producer.start();
+            producer.bind(frontPort);
+            sender.start();
+        } catch (IOException e) {
+            producer.stop();
+            throw e;
+        }
         return producer;
     }
 
     private Server consumer() throws IOException {
-        final Server consumer = new Server(100000, 1000000);
+        final Server consumer = new Server(1_048_576, CONSUMER_BUFFER_SIZE);
 
         consumer.addListener(new Listener() {
-            private int numConnected = 0;
-
             @Override
             public void connected(Connection connection) {
-                connection.setName("Sink " + numConnected);
+                connection.setName("Bench to sink");
                 LOG.info("Sink connected ({}), {}", connection, connection.getRemoteAddressTCP());
-            }
-
-            @Override
-            public void disconnected(Connection connection) {
-                LOG.info("Sink disconnected ({})", connection);
             }
 
             @Override
@@ -149,47 +141,49 @@ public class BenchStand implements AutoCloseable {
                 if (object instanceof Integer) {
                     wordId = (int) object;
                 } else {
-                    LOG.warn("Unknown object type", object);
+                    LOG.warn("Unknown object type {}", object);
                     return;
                 }
 
                 latencies[wordId] = System.nanoTime() - latencies[wordId];
                 awaitConsumer.accept(wordId);
                 if (awaitConsumer.got() % logEach == 0) {
-                    LOG.info("Progress: {}/{}", awaitConsumer.got(), expectedSize);
+                    LOG.info("Progress: {}/{}", awaitConsumer.got(), numWords);
                 }
             }
         });
 
-        consumer.start();
-        consumer.bind(rearPort);
+        try {
+            consumer.start();
+            consumer.bind(rearPort);
+        } catch (IOException e) {
+            consumer.stop();
+            throw e;
+        }
         return consumer;
     }
 
     @Override
-    public void close() {
+    public void close() throws IOException {
         producer.stop();
         consumer.stop();
 
-        final String logPath = System.getProperty("user.home") + "/latencies.txt";
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(logPath))) {
+        final String log = System.getProperty("user.home") + "/latencies.txt";
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(log))) {
             for (long latency : latencies) {
                 bw.write(String.valueOf(latency));
                 bw.newLine();
             }
-        } catch (IOException e) {
-            LOG.error("Failed to write latencies");
-            throw new RuntimeException(e);
         }
-        LOG.info("Successfully wrote latencies to a file");
+        LOG.info("Latencies saved");
 
         Arrays.sort(latencies);
         final double[] levels = {0.5, 0.75, 0.9, 0.99};
         final long[] quantiles = quantiles(latencies, levels);
         for (int i = 0; i < levels.length; i++) {
-            LOG.info("Level {} percentile: {}", (int) (levels[i] * 100), quantiles[i]);
+            LOG.info("Level {} percentile: {} ms", (int) (levels[i] * 100),
+                     Math.round(quantiles[i] / 1000000.0));
         }
-
     }
 
     public static long[] quantiles(long[] sample, double... levels) {

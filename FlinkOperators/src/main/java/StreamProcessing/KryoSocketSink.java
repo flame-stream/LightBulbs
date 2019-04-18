@@ -11,8 +11,8 @@ import org.slf4j.LoggerFactory;
 public class KryoSocketSink extends RichSinkFunction<Integer> {
     private static final long serialVersionUID = 1L;
     private static final Logger LOG = LoggerFactory.getLogger(KryoSocketSink.class);
-    private static final int OUTPUT_BUFFER_SIZE = 1000000;
-    private static final int CONNECTION_AWAIT_TIMEOUT = 5000;
+    private static final int OUTPUT_BUFFER_SIZE = 2_097_152; // bytes
+    private static final int CONNECTION_AWAIT_TIMEOUT = 5000; // milliseconds
 
     private final String hostname;
     private final int port;
@@ -25,11 +25,16 @@ public class KryoSocketSink extends RichSinkFunction<Integer> {
 
     @Override
     public void open(Configuration parameters) throws Exception {
-        client = new Client(OUTPUT_BUFFER_SIZE, 1000);
+        client = new Client(OUTPUT_BUFFER_SIZE, 1_048_576);
         client.addListener(new Listener() {
             @Override
+            public void connected(Connection connection) {
+                connection.setName("Sink to bench");
+            }
+
+            @Override
             public void disconnected(Connection connection) {
-                LOG.warn("Sink has been disconnected {}", connection);
+                LOG.warn("Sink disconnected");
             }
         });
 

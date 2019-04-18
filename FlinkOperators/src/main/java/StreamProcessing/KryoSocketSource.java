@@ -11,9 +11,9 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 
 public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 1;
     private static final Logger LOG = LoggerFactory.getLogger(KryoSocketSource.class);
-    private static final int INPUT_BUFFER_SIZE = 1000000; // bytes
+    private static final int INPUT_BUFFER_SIZE = 4_194_304; // bytes
     private static final int CONNECTION_AWAIT_TIMEOUT = 5000; // milliseconds
 
     private final String hostname;
@@ -27,7 +27,7 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
 
     @Override
     public void open(Configuration parameters) {
-        client = new Client(1000, INPUT_BUFFER_SIZE);
+        client = new Client(1_048_576, INPUT_BUFFER_SIZE);
         client.getKryo()
               .register(WordWithID.class);
     }
@@ -37,8 +37,9 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
         client.addListener(new Listener() {
             @Override
             public void connected(Connection connection) {
-                connection.setName("Client Source");
+                connection.setName("Source to bench");
             }
+
             @Override
             public void received(Connection connection, Object object) {
                 if (object instanceof WordWithID) {
@@ -50,12 +51,7 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
 
             @Override
             public void disconnected(Connection connection) {
-                LOG.info("DISCONNECTED");
-                try {
-                    client.connect(CONNECTION_AWAIT_TIMEOUT, hostname, port);
-                } catch (IOException e) {
-                    LOG.error("Error {}", e);
-                }
+                LOG.info("Source disconnected");
             }
         });
 
@@ -63,7 +59,6 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
         client.start();
         client.connect(CONNECTION_AWAIT_TIMEOUT, hostname, port);
         LOG.info("CONNECTED");
-        client.run();
 
         synchronized (hostname) {
             hostname.wait();
