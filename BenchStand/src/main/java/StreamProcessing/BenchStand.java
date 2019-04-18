@@ -4,7 +4,7 @@ import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
 import com.esotericsoftware.kryonet.Server;
 import com.typesafe.config.Config;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
+import org.apache.commons.math3.util.Precision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -182,7 +182,7 @@ public class BenchStand implements AutoCloseable {
         final long[] quantiles = quantiles(latencies, levels);
         for (int i = 0; i < levels.length; i++) {
             LOG.info("Level {} percentile: {} ms", (int) (levels[i] * 100),
-                     Math.round(quantiles[i] / 1000000.0));
+                     Precision.round(quantiles[i] / 1000000.0, 4));
         }
     }
 
