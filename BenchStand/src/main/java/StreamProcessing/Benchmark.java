@@ -27,6 +27,7 @@ public class Benchmark {
             } else {
                 env = StreamExecutionEnvironment.createLocalEnvironment(parallelism);
             }
+            env.setBufferTimeout(0);
 
             final String hostname = benchConfig.getString("job.bench_host");
             final int frontPort = benchConfig.getInt("job.source_port");
