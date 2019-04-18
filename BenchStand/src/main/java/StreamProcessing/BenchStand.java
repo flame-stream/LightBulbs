@@ -24,6 +24,7 @@ public class BenchStand implements AutoCloseable {
     private final int rearPort;
     private final int logEach;
     private final int sleepFor;
+    private final int dropFirstNWords;
     private final int parallelism;
 
     private final Runnable deployer;
@@ -41,6 +42,7 @@ public class BenchStand implements AutoCloseable {
         this.rearPort = benchConfig.getInt("job.sink_port");
         this.logEach = benchConfig.getInt("job.log_each");
         this.sleepFor = benchConfig.getInt("benchstand.sleep_for");
+        this.dropFirstNWords = benchConfig.getInt("benchstand.drop_first_n_words");
         this.parallelism = benchConfig.getInt("job.parallelism");
         this.deployer = deployer;
         this.awaitConsumer = new AwaitCountConsumer(numWords);
@@ -168,18 +170,19 @@ public class BenchStand implements AutoCloseable {
         producer.stop();
         consumer.stop();
 
+        final long[] jitLatencies = Arrays.copyOfRange(latencies, dropFirstNWords, latencies.length);
         final String log = System.getProperty("user.home") + "/latencies.txt";
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(log))) {
-            for (long latency : latencies) {
+            for (long latency : jitLatencies) {
                 bw.write(String.valueOf(latency));
                 bw.newLine();
             }
         }
         LOG.info("Latencies saved");
 
-        Arrays.sort(latencies);
+        Arrays.sort(jitLatencies);
         final double[] levels = {0.5, 0.75, 0.9, 0.99};
-        final long[] quantiles = quantiles(latencies, levels);
+        final long[] quantiles = quantiles(jitLatencies, levels);
         for (int i = 0; i < levels.length; i++) {
             LOG.info("Level {} percentile: {} ms", (int) (levels[i] * 100),
                      Precision.round(quantiles[i] / 1000000.0, 4));
