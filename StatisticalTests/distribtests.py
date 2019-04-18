@@ -1,12 +1,17 @@
+import random
+import string
 import mmh3
 import numpy as np
 from collections import defaultdict
 from statistictools import ls_parameter_estimation, processed_counts
-import matplotlib.pyplot as plt
+
+
+def hash_generator(size=10, chars=string.ascii_uppercase + string.digits):
+    return ''.join(random.choice(chars) for _ in range(size))
 
 
 def group_index_by_hash(el, i, parallelism):
-    return mmh3.hash('qwerty' + str(el) + 'hiphop') % parallelism
+    return mmh3.hash(hash_generator() + str(el) + hash_generator()) % parallelism
 
 
 def group_index_by_order(el, i, parallelism):
@@ -122,26 +127,3 @@ def exp_smoothing_topwords(sample, *, window_size, lamd, epoch=10, topn=100):
                 topwords.append((i, counts[:topn]))
             window_word_counter.clear()
     return topwords
-
-
-def plot_partitions(partitions, borderlines=None):
-    ps = len(partitions)
-    if ps > 1:
-        plt.figure(figsize=(20, 20))
-        plt.subplots_adjust(hspace=0.6)
-        for idx, (part, data) in enumerate(partitions.items()):
-            rows = ps // 2
-            plt.subplot(rows, 2, idx + 1)
-            plt.scatter(*zip(*data), s=5)
-            if borderlines:
-                plt.plot([borderlines[part], borderlines[part]], [0, 1], color='red')
-            plt.xlabel('size')
-            plt.ylabel('p-value')
-            plt.title('Partition: ' + str(part))
-    else:
-        for part, data in partitions.items():
-            plt.scatter(*zip(*data), s=5)
-            plt.xlabel('size')
-            plt.ylabel('p-value')
-            plt.title('Partition: ' + str(part))
-    plt.show()

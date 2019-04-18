@@ -104,24 +104,9 @@ def plot_counts(filename):
 
 
 if __name__ == '__main__':
-    pass
-# file = open('../TestData/wiki5M.txt', 'r')
-# text = file.read().lower()
-# file.close()
-# words = re.sub('\W', ' ', text).split()
-#
-# for i in range(10):
-#     w = words[i * 500000: (i + 1) * 500000]
-#     lgnm = np.array(np.random.lognormal(9, 1, 500000), dtype=np.int)
-#     f = open(f'../TestData/wiki+lognorm/{i}.txt','w')
-#     f.write(' '.join(w))
-#     f.write(' конецтекстаначалологнормального ')
-#     f.write(' '.join([str(l) for l in lgnm]))
-#     f.close()
-# for i in range(10):
-#     file = open(f'../TestData/wiki+lognorm/{i}.txt', 'r')
-#     text = file.read().lower()
-#     file.close()
-#     words = re.sub('\W', ' ', text).split()
-#     print(len(words))
-#     print(words[499980:500020])
+    files = [f'../TestData/wiki+lognorm/{i}.txt' for i in range(10)]
+    parals = [1, 2, 4, 8, 12, 16, 20, 24, 28, 32]
+    save_pvalues(chisquare_for_zipf, files, 'hash', parals, [-0.05], [500], 'new_results.json')
+    save_pvalues(chisquare_for_zipf, files, 'round', parals, [-0.05], [500], 'new_results.json')
+
+
