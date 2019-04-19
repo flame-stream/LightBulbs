@@ -15,7 +15,7 @@ module "networking" {
 
 resource "aws_instance" "node" {
   count         = "${var.cluster_size}"
-  ami           = "ami-08182c55a1c188dee"
+  ami           = "ami-03bca18cb3dc173c9"
   instance_type = "t2.micro"
   key_name      = "admin-paris"
   subnet_id     = "${module.networking.subnet_id}"
