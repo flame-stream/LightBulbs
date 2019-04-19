@@ -2,6 +2,7 @@ package StreamProcessing;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
 import java.io.File;
@@ -27,17 +28,22 @@ public class Benchmark {
             } else {
                 env = StreamExecutionEnvironment.createLocalEnvironment(parallelism);
             }
-            env.setBufferTimeout(0);
 
             final String hostname = benchConfig.getString("job.bench_host");
             final int frontPort = benchConfig.getInt("job.source_port");
             final int rearPort = benchConfig.getInt("job.sink_port");
             final int meanDelay = benchConfig.getInt("job.mean_delay");
 
-            env.addSource(new KryoSocketSource(hostname, frontPort))
-               .keyBy("word")
-               .map(new Sleeper(meanDelay))
-               .addSink(new KryoSocketSink(hostname, rearPort));
+            final DataStreamSink<Integer> streamSink =
+                    env.addSource(new KryoSocketSource(hostname, frontPort))
+                       .keyBy("word")
+                       .map(new Sleeper(meanDelay))
+                       .addSink(new KryoSocketSink(hostname, rearPort));
+
+            if (benchConfig.getBoolean("job.merge_on_single_node")) {
+                streamSink.setParallelism(1);
+            }
+            env.setBufferTimeout(0);
 
             new Thread(() -> {
                 try {
