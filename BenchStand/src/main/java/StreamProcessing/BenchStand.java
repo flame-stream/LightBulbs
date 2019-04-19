@@ -26,6 +26,8 @@ public class BenchStand implements AutoCloseable {
     private final int sleepFor;
     private final int dropFirstNWords;
     private final int parallelism;
+    private long start;
+    private long finish;
 
     private final Runnable deployer;
     private final AwaitCountConsumer awaitConsumer;
@@ -54,6 +56,7 @@ public class BenchStand implements AutoCloseable {
     public void run() throws InterruptedException {
         deployer.run();
         awaitConsumer.await(10, TimeUnit.MINUTES);
+        this.finish = System.currentTimeMillis() - this.start;
         producer.close();
         consumer.close();
     }
@@ -96,6 +99,7 @@ public class BenchStand implements AutoCloseable {
                 }
             }
 
+            this.start = System.currentTimeMillis();
             try (BufferedReader br = new BufferedReader(new FileReader(file))) {
                 int i = 0;
                 for (String line; (line = br.readLine()) != null; ) {
@@ -187,6 +191,9 @@ public class BenchStand implements AutoCloseable {
             LOG.info("Level {} percentile: {} ms", (int) (levels[i] * 100),
                      Precision.round(quantiles[i] / 1000000.0, 4));
         }
+        double timeSeconds = Precision.round(this.finish / 1000.0, 4);
+        LOG.info("Time total {} s", timeSeconds);
+        LOG.info("Throughput {} words/s", (int) (this.numWords / timeSeconds));
     }
 
     public static long[] quantiles(long[] sample, double... levels) {
