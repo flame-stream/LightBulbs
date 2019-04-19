@@ -67,8 +67,8 @@
   tasks:
     - name: Copy test data to bench
       copy:
-        src: ../../TestData/war_and_peace.txt
-        dest: ~/war_and_peace.txt
+        src: ../../TestData/comsn10.txt
+        dest: ~/comsn10.txt
 
     - name: Assemble benchmark config
       template:
