@@ -1,5 +1,7 @@
 package StreamProcessing;
 
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.Registration;
 import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
 import com.esotericsoftware.kryonet.Server;
@@ -56,7 +58,8 @@ public class BenchStand implements AutoCloseable {
     public void run() throws InterruptedException {
         deployer.run();
         awaitConsumer.await(10, TimeUnit.MINUTES);
-        this.finish = System.currentTimeMillis() - this.start;
+        finish = System.currentTimeMillis() - start;
+        producer.sendToAllTCP(new Stop());
         producer.close();
         consumer.close();
     }
@@ -65,8 +68,10 @@ public class BenchStand implements AutoCloseable {
         final Server producer = new Server(PRODUCER_BUFFER_SIZE, 1_048_576);
         final Connection[] connections = new Connection[parallelism];
 
-        producer.getKryo()
-                .register(WordWithID.class);
+        Kryo kryo = producer.getKryo();
+        kryo.register(WordWithID.class);
+        kryo.register(Stop.class);
+
         producer.addListener(new Listener() {
             private int numConnected = 0;
 
@@ -99,7 +104,7 @@ public class BenchStand implements AutoCloseable {
                 }
             }
 
-            this.start = System.currentTimeMillis();
+            start = System.currentTimeMillis();
             try (BufferedReader br = new BufferedReader(new FileReader(file))) {
                 int i = 0;
                 for (String line; (line = br.readLine()) != null; ) {

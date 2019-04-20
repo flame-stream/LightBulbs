@@ -57,6 +57,5 @@ public class Benchmark {
         try (BenchStand benchStand = new BenchStand(benchConfig, deployer)) {
             benchStand.run();
         }
-        System.exit(0);
     }
 }

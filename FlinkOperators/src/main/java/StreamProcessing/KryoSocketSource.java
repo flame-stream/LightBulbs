@@ -1,5 +1,6 @@
 package StreamProcessing;
 
+import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryonet.Client;
 import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
@@ -26,8 +27,9 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
     @Override
     public void open(Configuration parameters) {
         client = new Client(1_048_576, INPUT_BUFFER_SIZE);
-        client.getKryo()
-              .register(WordWithID.class);
+        Kryo kryo = client.getKryo();
+        kryo.register(WordWithID.class);
+        kryo.register(Stop.class);
     }
 
     @Override
@@ -42,6 +44,10 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
             public void received(Connection connection, Object object) {
                 if (object instanceof WordWithID) {
                     ctx.collect((WordWithID) object);
+                } else if (object instanceof Stop) {
+                    synchronized (hostname) {
+                        hostname.notify();
+                    }
                 } else {
                     LOG.warn("Unknown object type {}", object);
                 }
