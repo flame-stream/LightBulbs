@@ -2,8 +2,11 @@
     "benchstand": {
         "file_path": "comsn10.txt",
         "word_count": 21932,
-        "sleep_for": 200000,
         "drop_first_n_words": 1000,
+        "parallelism": [1, 2, 4, 8],
+        "steps": [1, 1.5, 2, 3],
+        "min_delay_between_words": 1700000,
+        "max_delay_between_words": 2100000,
     },
     "remote": {
         "manager_hostname": "{{ groups['manager'][0] }}",
@@ -12,8 +15,8 @@
     "job": {
         "log_each": 5000,
         "mean_delay": 180000,
-        "parallelism": {{ groups['workers'] | length }},
-        "merge_on_single_node": false,
+        "computation_delay": 1000000,
+        "validation_delay": 180000,
         "bench_host": "{{ groups['bench'][0] }}",
         "source_port": 9998,
         "sink_port": 9999

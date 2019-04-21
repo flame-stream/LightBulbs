@@ -1,11 +1,9 @@
 package StreamProcessing;
 
 import com.esotericsoftware.kryo.Kryo;
-import com.esotericsoftware.kryo.Registration;
 import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
 import com.esotericsoftware.kryonet.Server;
-import com.typesafe.config.Config;
 import org.apache.commons.math3.util.Precision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,13 +17,14 @@ public class BenchStand implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(BenchStand.class);
     private static final int PRODUCER_BUFFER_SIZE = 4_194_304; // bytes
     private static final int CONSUMER_BUFFER_SIZE = 2_097_152; // bytes
+    private static final double[] levels = {0.5, 0.75, 0.9, 0.99};
 
     private final String file;
     private final int numWords;
-    private final int frontPort;
-    private final int rearPort;
+    private final int sourcePort;
+    private final int sinkPort;
     private final int logEach;
-    private final int sleepFor;
+    private final long delayBetweenWords;
     private final int dropFirstNWords;
     private final int parallelism;
     private long start;
@@ -39,15 +38,15 @@ public class BenchStand implements AutoCloseable {
     // TODO: Needs synchronized access?
     private final long[] latencies;
 
-    public BenchStand(Config benchConfig, Runnable deployer) throws IOException {
-        this.file = benchConfig.getString("benchstand.file_path");
-        this.numWords = benchConfig.getInt("benchstand.word_count");
-        this.frontPort = benchConfig.getInt("job.source_port");
-        this.rearPort = benchConfig.getInt("job.sink_port");
-        this.logEach = benchConfig.getInt("job.log_each");
-        this.sleepFor = benchConfig.getInt("benchstand.sleep_for");
-        this.dropFirstNWords = benchConfig.getInt("benchstand.drop_first_n_words");
-        this.parallelism = benchConfig.getInt("job.parallelism");
+    public BenchStand(BenchConfig config, Runnable deployer) throws IOException {
+        this.file = config.file;
+        this.numWords = config.numWords;
+        this.sourcePort = config.sourcePort;
+        this.sinkPort = config.sinkPort;
+        this.logEach = config.logEach;
+        this.delayBetweenWords = config.delayBetweenWords;
+        this.dropFirstNWords = config.dropFirstNWords;
+        this.parallelism = config.parallelism;
         this.deployer = deployer;
         this.awaitConsumer = new AwaitCountConsumer(numWords);
         this.latencies = new long[numWords];
@@ -55,13 +54,46 @@ public class BenchStand implements AutoCloseable {
         this.consumer = consumer();
     }
 
-    public void run() throws InterruptedException {
+    public static long[] quantiles(long[] sample, double... levels) {
+        long[] quantiles = new long[levels.length];
+        for (int i = 0; i < levels.length; i++) {
+            int K = (int) (levels[i] * (sample.length - 1));
+            if (K + 1 < levels[i] * sample.length) {
+                quantiles[i] = sample[K + 1];
+            } else {
+                quantiles[i] = sample[K];
+            }
+        }
+        return quantiles;
+    }
+
+    public BenchResult run() throws InterruptedException {
         deployer.run();
         awaitConsumer.await(10, TimeUnit.MINUTES);
+
         finish = System.currentTimeMillis() - start;
         producer.sendToAllTCP(new Stop());
         producer.close();
         consumer.close();
+
+        final long[] jitLatencies = Arrays.copyOfRange(latencies, dropFirstNWords,
+                                                       latencies.length);
+        Arrays.sort(jitLatencies);
+
+        final long[] quantiles = quantiles(jitLatencies, levels);
+        final double[] quantilesMs = new double[quantiles.length];
+        for (int i = 0; i < levels.length; i++) {
+            quantilesMs[i] = Precision.round(quantiles[i] / 1000000.0, 4);
+            LOG.info("Level {} percentile: {} ms", (int) (levels[i] * 100), quantilesMs[i]);
+        }
+
+        final double timeSeconds = Precision.round(this.finish / 1000.0, 4);
+        final int throughPut = (int) (numWords / timeSeconds);
+        LOG.info("Time total {} s", timeSeconds);
+        LOG.info("Throughput {} words/s", throughPut);
+
+        return new BenchResult(quantilesMs[0], quantilesMs[1], quantilesMs[2], quantilesMs[3],
+                               timeSeconds, throughPut);
     }
 
     private Server producer() throws IOException {
@@ -78,6 +110,7 @@ public class BenchStand implements AutoCloseable {
             @Override
             public void connected(Connection connection) {
                 connection.setName("Bench to source");
+                connection.setTimeout(20000);
                 synchronized (connections) {
                     if (numConnected < parallelism) {
                         LOG.info("Source connected: ({}), {}", connection,
@@ -116,7 +149,7 @@ public class BenchStand implements AutoCloseable {
                             latencies[i] = System.nanoTime();
                             connections[i % parallelism].sendTCP(new WordWithID(i, word));
                             i++;
-                            LockSupport.parkNanos(sleepFor);
+                            LockSupport.parkNanos(delayBetweenWords);
                         }
                     }
                 }
@@ -127,7 +160,7 @@ public class BenchStand implements AutoCloseable {
 
         try {
             producer.start();
-            producer.bind(frontPort);
+            producer.bind(sourcePort);
             sender.start();
         } catch (IOException e) {
             producer.stop();
@@ -138,11 +171,11 @@ public class BenchStand implements AutoCloseable {
 
     private Server consumer() throws IOException {
         final Server consumer = new Server(1_048_576, CONSUMER_BUFFER_SIZE);
-
         consumer.addListener(new Listener() {
             @Override
             public void connected(Connection connection) {
                 connection.setName("Bench to sink");
+                connection.setTimeout(20000);
                 LOG.info("Sink connected ({}), {}", connection, connection.getRemoteAddressTCP());
             }
 
@@ -166,7 +199,7 @@ public class BenchStand implements AutoCloseable {
 
         try {
             consumer.start();
-            consumer.bind(rearPort);
+            consumer.bind(sinkPort);
         } catch (IOException e) {
             consumer.stop();
             throw e;
@@ -175,42 +208,8 @@ public class BenchStand implements AutoCloseable {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() {
         producer.stop();
         consumer.stop();
-
-        final long[] jitLatencies = Arrays.copyOfRange(latencies, dropFirstNWords, latencies.length);
-        final String log = System.getProperty("user.home") + "/latencies.txt";
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(log))) {
-            for (long latency : jitLatencies) {
-                bw.write(String.valueOf(latency));
-                bw.newLine();
-            }
-        }
-        LOG.info("Latencies saved");
-
-        Arrays.sort(jitLatencies);
-        final double[] levels = {0.5, 0.75, 0.9, 0.99};
-        final long[] quantiles = quantiles(jitLatencies, levels);
-        for (int i = 0; i < levels.length; i++) {
-            LOG.info("Level {} percentile: {} ms", (int) (levels[i] * 100),
-                     Precision.round(quantiles[i] / 1000000.0, 4));
-        }
-        double timeSeconds = Precision.round(this.finish / 1000.0, 4);
-        LOG.info("Time total {} s", timeSeconds);
-        LOG.info("Throughput {} words/s", (int) (this.numWords / timeSeconds));
-    }
-
-    public static long[] quantiles(long[] sample, double... levels) {
-        long[] quantiles = new long[levels.length];
-        for (int i = 0; i < levels.length; i++) {
-            int K = (int) (levels[i] * (sample.length - 1));
-            if (K + 1 < levels[i] * sample.length) {
-                quantiles[i] = sample[K + 1];
-            } else {
-                quantiles[i] = sample[K];
-            }
-        }
-        return quantiles;
     }
 }

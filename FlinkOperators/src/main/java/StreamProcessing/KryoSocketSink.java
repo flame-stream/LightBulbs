@@ -26,6 +26,7 @@ public class KryoSocketSink extends RichSinkFunction<Integer> {
     @Override
     public void open(Configuration parameters) throws Exception {
         client = new Client(OUTPUT_BUFFER_SIZE, 1_048_576);
+        client.setTimeout(20000);
         client.addListener(new Listener() {
             @Override
             public void connected(Connection connection) {

@@ -1,10 +1,20 @@
 package StreamProcessing;
 
+import org.apache.commons.math3.distribution.ExponentialDistribution;
 import org.apache.flink.api.common.functions.MapFunction;
 
-public class Pass implements MapFunction<WordWithID, Integer> {
+import java.util.concurrent.locks.LockSupport;
+
+public class Pass implements MapFunction<WordWithID, WordWithID> {
+    private final ExponentialDistribution exp;
+
+    public Pass(int mean) {
+        this.exp = new ExponentialDistribution(mean);
+    }
+
     @Override
-    public Integer map(WordWithID word) {
-        return word.id;
+    public WordWithID map(WordWithID word) {
+        LockSupport.parkNanos((long) exp.sample());
+        return word;
     }
 }

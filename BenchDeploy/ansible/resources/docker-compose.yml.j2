@@ -7,7 +7,7 @@ services:
     command: jobmanager
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - FLINK_JM_HEAP=512m
+      - FLINK_JM_HEAP=1024m
 
   taskmanager:
     image: flink:alpine
@@ -21,7 +21,7 @@ services:
       replicas: {{ num_taskmanagers }}
     environment:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
-      - FLINK_TM_HEAP=512m
+      - FLINK_TM_HEAP=1024m
 
 # DO NOT REMOVE
 # https://github.com/moby/moby/issues/27399#issuecomment-256928125

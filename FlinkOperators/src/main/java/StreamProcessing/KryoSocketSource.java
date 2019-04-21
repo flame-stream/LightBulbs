@@ -27,6 +27,7 @@ public class KryoSocketSource extends RichParallelSourceFunction<WordWithID> {
     @Override
     public void open(Configuration parameters) {
         client = new Client(1_048_576, INPUT_BUFFER_SIZE);
+        client.setTimeout(20000);
         Kryo kryo = client.getKryo();
         kryo.register(WordWithID.class);
         kryo.register(Stop.class);
