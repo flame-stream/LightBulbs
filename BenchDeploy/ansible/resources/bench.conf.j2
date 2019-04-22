@@ -2,11 +2,11 @@
     "benchstand": {
         "file_path": "comsn10.txt",
         "word_count": 21932,
-        "drop_first_n_words": 1000,
-        "parallelism": [1, 2, 4, 8],
-        "steps": [1, 1.5, 2, 3],
-        "min_delay_between_words": 1700000,
-        "max_delay_between_words": 2100000,
+        "drop_first_n_words": 2000,
+        "parallelism": 8,
+        "min_delay_between_words": 100000,
+        "max_delay_between_words": 300000,
+        "delay_increment": 10000,
     },
     "remote": {
         "manager_hostname": "{{ groups['manager'][0] }}",

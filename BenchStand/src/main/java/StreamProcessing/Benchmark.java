@@ -34,68 +34,35 @@ public class Benchmark {
                 config.getInt("job.source_port"),
                 config.getInt("job.sink_port"));
 
-        final List<Integer> parallelism = config.getIntList("benchstand.parallelism");
-        final List<Double> steps = config.getDoubleList("benchstand.steps");
+        final int parallelism = config.getInt("benchstand.parallelism");
         final long minDelayBetweenWords = config.getLong("benchstand.min_delay_between_words");
         final long maxDelayBetweenWords = config.getLong("benchstand.max_delay_between_words");
+        final long increment = config.getLong("benchstand.delay_increment");
 
-        final String log = System.getProperty("user.home") + "/results.txt";
-        try (PrintWriter pw = new PrintWriter(log, "UTF-8")) {
-            pw.println("Shuffle on N nodes");
+        final String header = "bench_delay,_50,_75,_90,_99,time_total,throughput";
+        benchConfig.parallelism = parallelism;
+
+        final String shuffle = System.getProperty("user.home") + "/shuffle.txt";
+        try (PrintWriter pw = new PrintWriter(new FileWriter(shuffle), true)) {
             benchConfig.mergeOnSingleNode = false;
-
-            for (int i = 0; i < parallelism.size(); i++) {
-                int p = parallelism.get(i);
-                double s = steps.get(i);
-                pw.println("Parallelism " + p);
-                benchConfig.parallelism = p;
-                benchConfig.delayBetweenWords =
-                        selectDelayBetweenWords(benchConfig,
-                                                (long) (minDelayBetweenWords / s),
-                                                maxDelayBetweenWords);
-                for (int j = 0; j < 5; j++) {
-                    pw.println(benchmark(benchConfig));
-                    pw.flush();
-                }
+            pw.println(header);
+            for (long delay = minDelayBetweenWords;
+                 delay <= maxDelayBetweenWords; delay += increment) {
+                benchConfig.delayBetweenWords = delay;
+                pw.println(delay + "," + benchmark(benchConfig));
             }
+        }
 
-            pw.println();
-            pw.println("Shuffle on N nodes, then merge on 1 node");
+        final String merge = System.getProperty("user.home") + "/merge.txt";
+        try (PrintWriter pw = new PrintWriter(new FileWriter(merge), true)) {
             benchConfig.mergeOnSingleNode = true;
-
-            for (int i = 0; i < parallelism.size(); i++) {
-                int p = parallelism.get(i);
-                double s = steps.get(i);
-                pw.println("Parallelism " + p);
-                benchConfig.parallelism = p;
-                benchConfig.delayBetweenWords = selectDelayBetweenWords(benchConfig,
-                                                                        (long) (minDelayBetweenWords / s),
-                                                                        maxDelayBetweenWords);
-                for (int j = 0; j < 5; j++) {
-                    pw.println(benchmark(benchConfig));
-                    pw.flush();
-                }
+            pw.println(header);
+            for (long delay = minDelayBetweenWords;
+                 delay <= maxDelayBetweenWords; delay += increment) {
+                benchConfig.delayBetweenWords = delay;
+                pw.println(delay + "," + benchmark(benchConfig));
             }
         }
-    }
-
-    public static long selectDelayBetweenWords(BenchConfig config, long minDelay,
-                                               long maxDelay) throws Exception {
-        List<Tuple2<Long, Double>> latencies = new ArrayList<>();
-        for (long delay = minDelay; delay < maxDelay; delay += 100_000) {
-            config.delayBetweenWords = delay;
-            latencies.add(Tuple2.of(delay, benchmark(config)._99));
-        }
-
-        Tuple2<Long, Double> minLatency = latencies.get(0);
-        double minScore = minLatency.f0 * minLatency.f1;
-        for (Tuple2<Long, Double> l : latencies) {
-            if (l.f0 * l.f1 < minScore) {
-                minLatency = l;
-                minScore = l.f0 * l.f1;
-            }
-        }
-        return minLatency.f0;
     }
 
     public static BenchResult benchmark(BenchConfig config) throws Exception {

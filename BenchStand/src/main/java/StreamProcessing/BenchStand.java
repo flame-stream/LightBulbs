@@ -87,8 +87,8 @@ public class BenchStand implements AutoCloseable {
             LOG.info("Level {} percentile: {} ms", (int) (levels[i] * 100), quantilesMs[i]);
         }
 
-        final double timeSeconds = Precision.round(this.finish / 1000.0, 4);
-        final int throughPut = (int) (numWords / timeSeconds);
+        final double timeSeconds = Precision.round(finish / 1000.0, 4);
+        final int throughPut = (int) ((numWords - dropFirstNWords) / timeSeconds);
         LOG.info("Time total {} s", timeSeconds);
         LOG.info("Throughput {} words/s", throughPut);
 
@@ -137,12 +137,14 @@ public class BenchStand implements AutoCloseable {
                 }
             }
 
-            start = System.currentTimeMillis();
             try (BufferedReader br = new BufferedReader(new FileReader(file))) {
                 int i = 0;
                 for (String line; (line = br.readLine()) != null; ) {
                     for (String word : line.toLowerCase()
                                            .split("[^а-яa-z0-9]+")) {
+                        if (i == dropFirstNWords) {
+                            start = System.currentTimeMillis();
+                        }
                         synchronized (connections) {
                             // DO NOT CHANGE THE LINE ORDER.
                             // WRITING TO latencies SHOULD COME FIRST IN THE BLOCK
