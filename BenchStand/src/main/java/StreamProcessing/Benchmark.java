@@ -2,13 +2,12 @@ package StreamProcessing;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
-import java.io.*;
-import java.util.ArrayList;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.util.List;
 
 public class Benchmark {
@@ -34,33 +33,40 @@ public class Benchmark {
                 config.getInt("job.source_port"),
                 config.getInt("job.sink_port"));
 
-        final int parallelism = config.getInt("benchstand.parallelism");
-        final long minDelayBetweenWords = config.getLong("benchstand.min_delay_between_words");
-        final long maxDelayBetweenWords = config.getLong("benchstand.max_delay_between_words");
-        final long increment = config.getLong("benchstand.delay_increment");
+        final List<Integer> parallelism = config.getIntList("benchstand.parallelism");
+        final List<Integer> benchSleep = config.getIntList("benchstand.bench_sleep");
+        final int numRuns = config.getInt("benchstand.num_runs");
 
         final String header = "bench_delay,_50,_75,_90,_99,time_total,throughput";
-        benchConfig.parallelism = parallelism;
-
         final String shuffle = System.getProperty("user.home") + "/shuffle.txt";
         try (PrintWriter pw = new PrintWriter(new FileWriter(shuffle), true)) {
             benchConfig.mergeOnSingleNode = false;
-            pw.println(header);
-            for (long delay = minDelayBetweenWords;
-                 delay <= maxDelayBetweenWords; delay += increment) {
-                benchConfig.delayBetweenWords = delay;
-                pw.println(delay + "," + benchmark(benchConfig));
+            for (int j = 0; j < parallelism.size(); j++) {
+                int p = parallelism.get(j);
+                int delay = benchSleep.get(j);
+                benchConfig.parallelism = p;
+                pw.println("Parallelism: " + p);
+                pw.println(header);
+                for (int i = 0; i < numRuns; i++) {
+                    benchConfig.delayBetweenWords = delay;
+                    pw.println(delay + "," + benchmark(benchConfig));
+                }
             }
         }
 
         final String merge = System.getProperty("user.home") + "/merge.txt";
         try (PrintWriter pw = new PrintWriter(new FileWriter(merge), true)) {
             benchConfig.mergeOnSingleNode = true;
-            pw.println(header);
-            for (long delay = minDelayBetweenWords;
-                 delay <= maxDelayBetweenWords; delay += increment) {
-                benchConfig.delayBetweenWords = delay;
-                pw.println(delay + "," + benchmark(benchConfig));
+            for (int j = 0; j < parallelism.size(); j++) {
+                int p = parallelism.get(j);
+                int delay = benchSleep.get(j);
+                benchConfig.parallelism = p;
+                pw.println("Parallelism: " + p);
+                pw.println(header);
+                for (int i = 0; i < numRuns; i++) {
+                    benchConfig.delayBetweenWords = delay;
+                    pw.println(delay + "," + benchmark(benchConfig));
+                }
             }
         }
     }
@@ -76,17 +82,17 @@ public class Benchmark {
                 env = StreamExecutionEnvironment.createLocalEnvironment(config.parallelism);
             }
 
-            final SingleOutputStreamOperator<WordWithID> words =
+            SingleOutputStreamOperator<WordWithID> words =
                     env.addSource(new KryoSocketSource(config.benchHost, config.sourcePort))
                        .keyBy("word")
-                       .map(new Pass(config.computationDelay));
+                       .map(new PassPi<>(config.computationDelay));
             if (config.mergeOnSingleNode) {
-                words.map(new Sleeper(config.validationDelay))
+                words.map(new PiSleeper(config.validationDelay))
                      .setParallelism(1)
                      .addSink(new KryoSocketSink(config.benchHost, config.sinkPort))
                      .setParallelism(1);
             } else {
-                words.map(new Sleeper(config.validationDelay))
+                words.map(new PiSleeper(config.validationDelay))
                      .addSink(new KryoSocketSink(config.benchHost, config.sinkPort));
             }
             env.setBufferTimeout(0);

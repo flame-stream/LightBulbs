@@ -1,12 +1,11 @@
 {
     "benchstand": {
         "file_path": "comsn10.txt",
-        "word_count": 21932,
+        "word_count": 23864,
         "drop_first_n_words": 2000,
-        "parallelism": 8,
-        "min_delay_between_words": 100000,
-        "max_delay_between_words": 300000,
-        "delay_increment": 10000,
+        "parallelism": [1, 2, 4, 8, 16],
+        "bench_sleep": [1800000, 1300000, 900000, 700000, 500000],
+        "num_runs": 5,
     },
     "remote": {
         "manager_hostname": "{{ groups['manager'][0] }}",
@@ -15,8 +14,8 @@
     "job": {
         "log_each": 5000,
         "mean_delay": 180000,
-        "computation_delay": 1000000,
-        "validation_delay": 180000,
+        "computation_delay": 1600,
+        "validation_delay": 680,
         "bench_host": "{{ groups['bench'][0] }}",
         "source_port": 9998,
         "sink_port": 9999
