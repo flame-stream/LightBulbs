@@ -14,6 +14,7 @@ public class Pass implements MapFunction<WordWithID, WordWithID> {
 
     @Override
     public WordWithID map(WordWithID word) {
+        System.out.println(String.format("Id: %d", this.hashCode()));
         LockSupport.parkNanos((long) exp.sample());
         return word;
     }
